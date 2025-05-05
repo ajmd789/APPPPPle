@@ -1,6 +1,7 @@
 // ui/reader/ReaderActivity.java
 package com.example.appppple.ui.reader;
 
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -16,7 +17,6 @@ import com.example.appppple.domain.parser.BookParser;
 import com.example.appppple.domain.parser.ParserFactory;
 import com.example.appppple.domain.pagination.PaginationManager;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.List;
 
@@ -51,19 +51,16 @@ public class ReaderActivity extends AppCompatActivity {
      * 加载书籍内容并分页
      */
     private void loadBookContent() {
-        // 1. 从Intent获取文件路径
-        String filePath = getIntent().getStringExtra("BOOK_PATH");
-        
-        if (filePath == null) {
-            Toast.makeText(this, "请选择要阅读的书籍", Toast.LENGTH_SHORT).show();
-            finish();
-            return;
-        }
-        
-        // 2. 创建解析器（工厂模式便于扩展）
-        BookParser parser = ParserFactory.createParser(filePath);
         try {
-            Book book = parser.parse(new File(filePath));
+            // 1. 从Intent获取文件URI
+            Uri uri = getIntent().getData();
+            if (uri == null) {
+                throw new IllegalArgumentException("未选择书籍文件");
+            }
+
+            // 2. 创建解析器
+            BookParser parser = ParserFactory.createParser(this, uri);
+            Book book = parser.parse(this, uri);
             
             // 3. 使用分页管理器进行分页
             PaginationManager pagination = new PaginationManager(
@@ -75,8 +72,20 @@ public class ReaderActivity extends AppCompatActivity {
             mPages = pagination.paginate(book.getContent());
             updatePageDisplay();
         } catch (IOException e) {
-            Log.e(TAG, "Error reading book", e);
-            Toast.makeText(this, "打开书籍失败", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "读取书籍失败", e);
+            Toast.makeText(this, "读取书籍失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            finish();
+        } catch (SecurityException e) {
+            Log.e(TAG, "没有文件访问权限", e);
+            Toast.makeText(this, "没有文件访问权限", Toast.LENGTH_SHORT).show();
+            finish();
+        } catch (IllegalArgumentException e) {
+            Log.e(TAG, "参数错误", e);
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_SHORT).show();
+            finish();
+        } catch (Exception e) {
+            Log.e(TAG, "未知错误", e);
+            Toast.makeText(this, "发生未知错误", Toast.LENGTH_SHORT).show();
             finish();
         }
     }
@@ -85,7 +94,11 @@ public class ReaderActivity extends AppCompatActivity {
      * 更新页面显示
      */
     private void updatePageDisplay() {
-        if (mPages == null || mPages.isEmpty()) return;
+        if (mPages == null || mPages.isEmpty()) {
+            Toast.makeText(this, "书籍内容为空", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
         
         mTxtContent.setText(mPages.get(mCurrentPage));
         mTxtProgress.setText(String.format("%d/%d", 
