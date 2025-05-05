@@ -54,6 +54,12 @@ public class ReaderActivity extends AppCompatActivity {
         // 1. 从Intent获取文件路径
         String filePath = getIntent().getStringExtra("BOOK_PATH");
         
+        if (filePath == null) {
+            Toast.makeText(this, "请选择要阅读的书籍", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+        
         // 2. 创建解析器（工厂模式便于扩展）
         BookParser parser = ParserFactory.createParser(filePath);
         try {
