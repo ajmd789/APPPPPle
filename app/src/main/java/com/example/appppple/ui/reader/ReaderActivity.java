@@ -1,6 +1,8 @@
 // ui/reader/ReaderActivity.java
 package com.example.appppple.ui.reader;
 
+import android.content.Context;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
@@ -12,7 +14,9 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.appppple.R;
+import com.example.appppple.domain.manager.ReadingProgressManager;
 import com.example.appppple.domain.model.Book;
+import com.example.appppple.domain.model.Chapter;
 import com.example.appppple.domain.parser.BookParser;
 import com.example.appppple.domain.parser.ParserFactory;
 import com.example.appppple.domain.pagination.PaginationManager;
@@ -22,12 +26,24 @@ import java.util.List;
 
 public class ReaderActivity extends AppCompatActivity {
     private static final String TAG = "ReaderActivity";
+    private static final String EXTRA_BOOK_URI = "book_uri";
+    private static final String EXTRA_BOOK_NAME = "book_name";
     
     private TextView mTxtContent;
     private TextView mTxtProgress;
     private List<String> mPages;
     private int mCurrentPage = 0;
-    
+    private int mTotalPages = 0;
+    private Book currentBook;
+    private ReadingProgressManager progressManager;
+
+    public static void start(Context context, Uri bookUri, String bookName) {
+        Intent intent = new Intent(context, ReaderActivity.class);
+        intent.putExtra(EXTRA_BOOK_URI, bookUri);
+        intent.putExtra(EXTRA_BOOK_NAME, bookName);
+        context.startActivity(intent);
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -39,8 +55,29 @@ public class ReaderActivity extends AppCompatActivity {
         Button btnPrev = findViewById(R.id.btnPrev);
         Button btnNext = findViewById(R.id.btnNext);
         
+        progressManager = ReadingProgressManager.getInstance(this);
+
+        // 获取传递的书籍信息
+        Uri bookUri = getIntent().getParcelableExtra(EXTRA_BOOK_URI);
+        String bookName = getIntent().getStringExtra(EXTRA_BOOK_NAME);
+
+        if (bookUri == null || bookName == null) {
+            Toast.makeText(this, "书籍信息不完整", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
+        // 检查是否有上次的阅读进度
+        ReadingProgressManager.ReadingProgress lastProgress = progressManager.getLastReadingProgress();
+        if (lastProgress != null && lastProgress.getBookUri().equals(bookUri)) {
+            mCurrentPage = lastProgress.getCurrentPage();
+            mTotalPages = lastProgress.getTotalPages();
+            Log.d(TAG, String.format("恢复阅读进度 - 书名: %s, 当前页: %d/%d",
+                    bookName, mCurrentPage, mTotalPages));
+        }
+
         // 加载书籍内容
-        loadBookContent();
+        loadBookContent(bookUri, bookName);
         
         // 按钮事件
         btnPrev.setOnClickListener(v -> showPreviousPage());
@@ -50,18 +87,18 @@ public class ReaderActivity extends AppCompatActivity {
     /**
      * 加载书籍内容并分页
      */
-    private void loadBookContent() {
+    private void loadBookContent(Uri bookUri, String bookName) {
         try {
-            // 1. 从Intent获取文件URI
-            Uri uri = getIntent().getData();
-            if (uri == null) {
-                throw new IllegalArgumentException("未选择书籍文件");
+            // 1. 创建解析器
+            BookParser parser = ParserFactory.createParser(this, bookUri);
+            currentBook = parser.parse(this, bookUri);
+            
+            if (currentBook == null || currentBook.getChapters().isEmpty()) {
+                Toast.makeText(this, "书籍内容为空", Toast.LENGTH_SHORT).show();
+                finish();
+                return;
             }
 
-            // 2. 创建解析器
-            BookParser parser = ParserFactory.createParser(this, uri);
-            Book book = parser.parse(this, uri);
-            
             // 3. 使用分页管理器进行分页
             PaginationManager pagination = new PaginationManager(
                 mTxtContent.getPaint(),
@@ -69,8 +106,13 @@ public class ReaderActivity extends AppCompatActivity {
                 getScreenHeight()
             );
             
-            mPages = pagination.paginate(book.getContent());
+            mPages = pagination.paginate(currentBook.getContent());
+            calculateTotalPages();
             updatePageDisplay();
+            
+            // 保存初始进度
+            saveReadingProgress(bookName, bookUri);
+            
         } catch (IOException e) {
             Log.e(TAG, "读取书籍失败", e);
             Toast.makeText(this, "读取书籍失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
@@ -103,7 +145,10 @@ public class ReaderActivity extends AppCompatActivity {
         mTxtContent.setText(mPages.get(mCurrentPage));
         mTxtProgress.setText(String.format("%d/%d", 
             mCurrentPage + 1, 
-            mPages.size()));
+            mTotalPages));
+        
+        // 更新标题显示当前页数
+        setTitle(String.format("%s (%d/%d)", currentBook.getTitle(), mCurrentPage + 1, mTotalPages));
     }
     
     private void showNextPage() {
@@ -120,7 +165,24 @@ public class ReaderActivity extends AppCompatActivity {
         }
     }
     
-    // 获取屏幕尺寸
+    private void calculateTotalPages() {
+        if (currentBook == null || currentBook.getChapters().isEmpty()) {
+            mTotalPages = 0;
+            return;
+        }
+
+        // 这里需要根据实际的分页逻辑来计算总页数
+        // 示例：假设每页显示 1000 个字符
+        int charsPerPage = 1000;
+        int totalChars = 0;
+        
+        for (Chapter chapter : currentBook.getChapters()) {
+            totalChars += chapter.getContent().length();
+        }
+        
+        mTotalPages = (int) Math.ceil((double) totalChars / charsPerPage);
+    }
+    
     private int getScreenWidth() {
         DisplayMetrics metrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(metrics);
@@ -131,5 +193,18 @@ public class ReaderActivity extends AppCompatActivity {
         DisplayMetrics metrics = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(metrics);
         return metrics.heightPixels - 96; // 减去控制栏高度
+    }
+
+    private void saveReadingProgress(String bookName, Uri bookUri) {
+        progressManager.saveProgress(bookName, bookUri, mCurrentPage, mTotalPages);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // 保存当前阅读进度
+        if (currentBook != null) {
+            saveReadingProgress(currentBook.getTitle(), getIntent().getParcelableExtra(EXTRA_BOOK_URI));
+        }
     }
 }
