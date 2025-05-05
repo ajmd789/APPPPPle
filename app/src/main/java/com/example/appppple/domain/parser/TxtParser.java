@@ -16,6 +16,8 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * TXT 文件解析器
@@ -25,7 +27,24 @@ public class TxtParser implements BookParser {
     private static final int BUFFER_SIZE = 8192; // 8KB 缓冲区
     private static final long MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB 最大文件大小
     private static final String DEFAULT_ENCODING = "UTF-8";
-    private static final int MEMORY_LOG_INTERVAL = 1000000; // 每读取 1MB 输出一次内存信息
+    private static final int CHUNK_SIZE = 1024 * 1024; // 1MB 分块大小
+    private static final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    private final List<ChunkLoadListener> chunkLoadListeners = new ArrayList<>();
+
+    public interface ChunkLoadListener {
+        void onChunkLoaded(int loadedBytes, int totalBytes);
+        void onLoadComplete();
+        void onLoadError(Exception e);
+    }
+
+    public void addChunkLoadListener(ChunkLoadListener listener) {
+        chunkLoadListeners.add(listener);
+    }
+
+    public void removeChunkLoadListener(ChunkLoadListener listener) {
+        chunkLoadListeners.remove(listener);
+    }
 
     /**
      * 输出当前内存使用情况
@@ -54,8 +73,7 @@ public class TxtParser implements BookParser {
             throw new IllegalArgumentException("URI 不能为空");
         }
 
-        // 输出初始内存使用情况
-        logMemoryUsage("开始解析前");
+        Log.d(TAG, "开始解析文件: " + uri.toString());
 
         // 检查文件大小
         checkFileSize(context, uri);
@@ -71,58 +89,72 @@ public class TxtParser implements BookParser {
                 throw new IOException("无法打开文件流");
             }
             
-            // 使用 ByteArrayOutputStream 缓存内容
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            byte[] buffer = new byte[BUFFER_SIZE];
-            int bytesRead;
-            long totalBytesRead = 0;
+            // 读取前 4KB 用于编码检测
+            byte[] sampleBytes = new byte[4096];
+            int sampleSize = inputStream.read(sampleBytes);
+            if (sampleSize <= 0) {
+                throw new IOException("文件为空");
+            }
+
+            // 检测文件编码
+            String encoding = detectEncoding(sampleBytes);
+            Log.d(TAG, "检测到的文件编码: " + encoding);
+
+            // 使用检测到的编码创建 InputStreamReader
+            InputStreamReader reader = new InputStreamReader(
+                new java.io.SequenceInputStream(
+                    new java.io.ByteArrayInputStream(sampleBytes, 0, sampleSize),
+                    inputStream
+                ),
+                Charset.forName(encoding)
+            );
+
+            // 使用 StringBuilder 构建内容
+            StringBuilder contentBuilder = new StringBuilder();
+            char[] buffer = new char[BUFFER_SIZE];
+            int charsRead;
+            long totalCharsRead = 0;
             long lastMemoryLogBytes = 0;
-            
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                baos.write(buffer, 0, bytesRead);
-                totalBytesRead += bytesRead;
-                
+
+            while ((charsRead = reader.read(buffer)) != -1) {
+                contentBuilder.append(buffer, 0, charsRead);
+                totalCharsRead += charsRead;
+
                 // 每读取 1MB 输出一次内存信息
-                if (totalBytesRead - lastMemoryLogBytes >= MEMORY_LOG_INTERVAL) {
-                    logMemoryUsage("读取中 - 已读取: " + (totalBytesRead / (1024 * 1024)) + "MB");
-                    lastMemoryLogBytes = totalBytesRead;
-                }
-                
-                // 检查是否超过最大文件大小
-                if (totalBytesRead > MAX_FILE_SIZE) {
-                    throw new IOException("文件大小超过限制（50MB）");
+                if (totalCharsRead - lastMemoryLogBytes >= CHUNK_SIZE) {
+                    logMemoryUsage("读取中 - 已读取: " + (totalCharsRead / (1024 * 1024)) + "MB");
+                    lastMemoryLogBytes = totalCharsRead;
+                    
+                    // 通知分块加载进度
+                    for (ChunkLoadListener listener : chunkLoadListeners) {
+                        listener.onChunkLoaded((int) totalCharsRead, (int) inputStream.available());
+                    }
                 }
             }
-            
+
             // 输出读取完成后的内存使用情况
             logMemoryUsage("文件读取完成");
-            
-            // 获取文件内容字节数组
-            byte[] contentBytes = baos.toByteArray();
-            
-            // 输出内容转换前的内存使用情况
-            logMemoryUsage("内容转换前");
-            
-            // 检测文件编码
-            String encoding = detectEncoding(contentBytes);
-            Log.d(TAG, "检测到的文件编码: " + encoding);
-            
-            // 使用检测到的编码读取内容
-            String content = new String(contentBytes, Charset.forName(encoding));
-            
-            // 输出内容转换后的内存使用情况
-            logMemoryUsage("内容转换后");
-            
+
+            String content = contentBuilder.toString();
+            if (content.isEmpty()) {
+                throw new IOException("文件内容为空");
+            }
+
             // 将整个文件内容作为一个章节
             Chapter chapter = new Chapter("正文", content);
             chapters.add(chapter);
             book.setChapters(chapters);
             
-            // 输出最终内存使用情况
-            logMemoryUsage("解析完成");
+            // 通知加载完成
+            for (ChunkLoadListener listener : chunkLoadListeners) {
+                listener.onLoadComplete();
+            }
             
         } catch (IOException e) {
             Log.e(TAG, "解析 TXT 文件失败", e);
+            for (ChunkLoadListener listener : chunkLoadListeners) {
+                listener.onLoadError(e);
+            }
             throw new IOException("解析 TXT 文件失败: " + e.getMessage());
         }
         
