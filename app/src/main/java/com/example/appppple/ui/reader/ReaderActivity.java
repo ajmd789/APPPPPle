@@ -11,6 +11,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.example.appppple.R;
+import com.example.appppple.domain.model.Book;
 import com.example.appppple.domain.parser.BookParser;
 import com.example.appppple.domain.parser.ParserFactory;
 import com.example.appppple.domain.pagination.PaginationManager;
