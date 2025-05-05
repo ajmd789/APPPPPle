@@ -71,6 +71,18 @@ public class ReaderActivity extends AppCompatActivity {
             return;
         }
 
+        // 获取文件的持久化权限
+        try {
+            final int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+            getContentResolver().takePersistableUriPermission(currentBookUri, takeFlags);
+        } catch (SecurityException e) {
+            Log.e(TAG, "获取文件持久化权限失败", e);
+            Toast.makeText(this, "无法获取文件访问权限", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
         // 检查是否有上次的阅读进度
         ReadingProgressManager.ReadingProgress lastProgress = progressManager.getLastReadingProgress();
         if (lastProgress != null && lastProgress.getBookUri().equals(currentBookUri)) {

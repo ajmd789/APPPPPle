@@ -43,6 +43,7 @@ dependencies {
     }
     implementation 'org.slf4j:slf4j-android:1.7.25'
     implementation 'com.googlecode.juniversalchardet:juniversalchardet:1.0.3'
+    implementation 'com.google.code.gson:gson:2.10.1'
     testImplementation libs.junit
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
