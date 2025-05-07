@@ -29,6 +29,20 @@
                 android:layout_weight="1"
                 android:text="上一页" />
 
+            <Button
+                android:id="@+id/btnJump"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="8dp"
+                android:text="跳页" />
+
+            <Button
+                android:id="@+id/btnBookmarks"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="8dp"
+                android:text="书签" />
+
             <TextView
                 android:id="@+id/txtProgress"
                 android:layout_width="wrap_content"
@@ -45,6 +59,15 @@
                 android:text="下一页" />
         </LinearLayout>
     </LinearLayout>
+
+    <!-- 书签提示浮层 -->
+    <include
+        android:id="@+id/bookmarkHintOverlay"
+        layout="@layout/bookmark_hint_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:visibility="gone" />
 
     <!-- 加载动画 -->
     <FrameLayout
