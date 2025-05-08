@@ -77,7 +77,7 @@ public class BookmarkAdapter extends RecyclerView.Adapter<BookmarkAdapter.Bookma
         }
 
         void bind(Bookmark bookmark) {
-            bookmarkPageText.setText(String.format("第 %d 页", bookmark.getPageNumber() + 1));
+            bookmarkPageText.setText(String.format("第 %d 页", bookmark.getPage() + 1));
         }
     }
 } 

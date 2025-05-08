@@ -14,12 +14,18 @@ import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.app.Dialog;
+import android.view.Window;
+import android.view.WindowManager;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.widget.EditText;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import android.app.Dialog;
-import android.view.Window;
 
 import com.example.appppple.R;
 import com.example.appppple.domain.manager.BookmarkManager;
@@ -126,6 +132,10 @@ public class ReaderActivity extends AppCompatActivity {
         loadingText = findViewById(R.id.loadingText);
         bookmarkHintOverlay = findViewById(R.id.bookmarkHintOverlay);
 
+        // 移除重复的点击监听器，只使用GestureDetector处理点击事件
+        contentTextView.setClickable(true);
+        contentTextView.setFocusable(true);
+
         findViewById(R.id.btnPrev).setOnClickListener(v -> {
             if (currentPage > 0) {
                 currentPage--;
@@ -165,22 +175,33 @@ public class ReaderActivity extends AppCompatActivity {
                 }
                 return true;
             }
+
+            @Override
+            public boolean onSingleTapUp(MotionEvent e) {
+                Log.d(TAG, "检测到单击事件");
+                // 检查点击是否在contentTextView的范围内
+                int[] location = new int[2];
+                contentTextView.getLocationOnScreen(location);
+                int left = location[0];
+                int top = location[1];
+                int right = left + contentTextView.getWidth();
+                int bottom = top + contentTextView.getHeight();
+
+                if (e.getRawX() >= left && e.getRawX() <= right &&
+                    e.getRawY() >= top && e.getRawY() <= bottom) {
+                    Log.d(TAG, "点击在contentTextView范围内，显示中央菜单");
+                    showCenterMenu();
+                    return true;
+                }
+                return false;
+            }
         });
-    }
 
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        if (gestureDetector.onTouchEvent(event)) {
-            return true;
-        }
-
-        if (event.getAction() == MotionEvent.ACTION_UP && isBookmarkHintVisible) {
-            handleBookmarkAction();
-            hideBookmarkHint();
-            return true;
-        }
-
-        return super.onTouchEvent(event);
+        // 设置contentTextView的触摸监听器
+        contentTextView.setOnTouchListener((v, event) -> {
+            Log.d(TAG, "contentTextView触摸事件: " + event.getAction());
+            return gestureDetector.onTouchEvent(event);
+        });
     }
 
     private void showLoading(String message) {
@@ -308,7 +329,7 @@ public class ReaderActivity extends AppCompatActivity {
         setTitle(String.format("%s (%d/%d)", currentBook.getTitle(), currentPage + 1, totalPages));
 
         // 检查当前页是否有书签
-        if (currentBookUri != null && bookmarkManager.hasBookmark(currentBookUri, currentPage)) {
+        if (currentBookUri != null && bookmarkManager.isBookmarked(currentBookUri, currentPage)) {
             contentTextView.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.ic_bookmark, 0);
         } else {
             contentTextView.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
@@ -388,12 +409,12 @@ public class ReaderActivity extends AppCompatActivity {
     private void handleBookmarkAction() {
         if (currentBookUri == null || currentBookName == null) return;
 
-        boolean hasBookmark = bookmarkManager.hasBookmark(currentBookUri, currentPage);
+        boolean hasBookmark = bookmarkManager.isBookmarked(currentBookUri, currentPage);
         if (hasBookmark) {
-            bookmarkManager.removeBookmark(currentBookUri, currentPage);
+            bookmarkManager.toggleBookmark(currentBookName, currentBookUri, currentPage);
             Toast.makeText(this, "书签已删除", Toast.LENGTH_SHORT).show();
         } else {
-            bookmarkManager.addBookmark(currentBookName, currentBookUri, currentPage, "");
+            bookmarkManager.toggleBookmark(currentBookName, currentBookUri, currentPage);
             Toast.makeText(this, "书签已添加", Toast.LENGTH_SHORT).show();
         }
     }
@@ -408,11 +429,11 @@ public class ReaderActivity extends AppCompatActivity {
         RecyclerView recyclerView = bookmarkDialog.findViewById(R.id.bookmarkRecyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
-        List<Bookmark> bookmarks = bookmarkManager.getBookmarksByUri(currentBookUri);
+        List<Bookmark> bookmarks = bookmarkManager.getBookmarksForBook(currentBookUri);
         bookmarkAdapter = new BookmarkAdapter(bookmarks, new BookmarkAdapter.OnBookmarkClickListener() {
             @Override
             public void onBookmarkClick(Bookmark bookmark) {
-                currentPage = bookmark.getPageNumber();
+                currentPage = bookmark.getPage();
                 updatePageDisplay();
                 saveReadingProgress();
                 bookmarkDialog.dismiss();
@@ -420,14 +441,157 @@ public class ReaderActivity extends AppCompatActivity {
 
             @Override
             public void onDeleteClick(Bookmark bookmark) {
-                bookmarkManager.removeBookmark(currentBookUri, bookmark.getPageNumber());
-                bookmarkAdapter.updateBookmarks(bookmarkManager.getBookmarksByUri(currentBookUri));
+                bookmarkManager.toggleBookmark(currentBookName, currentBookUri, bookmark.getPage());
+                bookmarkAdapter.updateBookmarks(bookmarkManager.getBookmarksForBook(currentBookUri));
                 Toast.makeText(ReaderActivity.this, "书签已删除", Toast.LENGTH_SHORT).show();
             }
         });
 
         recyclerView.setAdapter(bookmarkAdapter);
         bookmarkDialog.show();
+    }
+
+    private void showCenterMenu() {
+        Log.d(TAG, "显示中央菜单");
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(R.layout.dialog_center_menu);
+
+        // 设置对话框宽度为屏幕宽度的80%
+        Window window = dialog.getWindow();
+        if (window != null) {
+            WindowManager.LayoutParams params = window.getAttributes();
+            params.width = (int) (getResources().getDisplayMetrics().widthPixels * 0.8);
+            window.setAttributes(params);
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+
+        // 设置目录按钮点击事件
+        dialog.findViewById(R.id.btnCatalog).setOnClickListener(v -> {
+            Log.d(TAG, "点击了目录按钮");
+            dialog.dismiss();
+            showCatalogDialog();
+        });
+
+        // 设置搜索按钮点击事件
+        dialog.findViewById(R.id.btnSearch).setOnClickListener(v -> {
+            Log.d(TAG, "点击了搜索按钮");
+            dialog.dismiss();
+            showSearchDialog();
+        });
+
+        dialog.show();
+    }
+
+    private void showCatalogDialog() {
+        if (currentBook == null || currentBook.getChapters() == null) {
+            Toast.makeText(this, "目录信息不可用", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(R.layout.dialog_catalog);
+
+        RecyclerView recyclerView = dialog.findViewById(R.id.catalogRecyclerView);
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+
+        CatalogAdapter adapter = new CatalogAdapter(currentBook.getChapters(), chapter -> {
+            // 计算章节对应的页码
+            int targetPage = calculatePageForChapter(chapter);
+            if (targetPage >= 0) {
+                currentPage = targetPage;
+                updatePageDisplay();
+                saveReadingProgress();
+            }
+            dialog.dismiss();
+        });
+
+        recyclerView.setAdapter(adapter);
+        dialog.show();
+    }
+
+    private void showSearchDialog() {
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(R.layout.dialog_global_search);
+
+        EditText searchInput = dialog.findViewById(R.id.searchInput);
+        TextView resultCount = dialog.findViewById(R.id.resultCount);
+        RecyclerView searchResults = dialog.findViewById(R.id.searchResults);
+        searchResults.setLayoutManager(new LinearLayoutManager(this));
+
+        GlobalSearchAdapter adapter = new GlobalSearchAdapter(this);
+        searchResults.setAdapter(adapter);
+
+        // 设置搜索监听
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                String keyword = s.toString().trim();
+                if (keyword.length() > 0) {
+                    searchInBook(keyword, adapter, resultCount);
+                } else {
+                    adapter.clearResults();
+                    resultCount.setText("");
+                }
+            }
+        });
+
+        // 设置搜索结果点击事件
+        adapter.setOnItemClickListener(result -> {
+            currentPage = result.getPageNumber();
+            updatePageDisplay();
+            saveReadingProgress();
+            dialog.dismiss();
+        });
+
+        dialog.show();
+    }
+
+    private void searchInBook(String keyword, GlobalSearchAdapter adapter, TextView resultCount) {
+        if (pages == null || pages.isEmpty()) return;
+
+        List<GlobalSearchAdapter.SearchResult> results = new ArrayList<>();
+        for (int i = 0; i < pages.size(); i++) {
+            String pageContent = pages.get(i);
+            if (pageContent.toLowerCase().contains(keyword.toLowerCase())) {
+                // 获取包含关键词的上下文
+                int start = Math.max(0, pageContent.toLowerCase().indexOf(keyword.toLowerCase()) - 20);
+                int end = Math.min(pageContent.length(), start + 60);
+                String snippet = pageContent.substring(start, end);
+                if (start > 0) snippet = "..." + snippet;
+                if (end < pageContent.length()) snippet = snippet + "...";
+
+                results.add(new GlobalSearchAdapter.SearchResult(
+                    "第" + (i + 1) + "页",
+                    snippet,
+                    i
+                ));
+            }
+        }
+
+        adapter.setResults(results);
+        adapter.setKeyword(keyword);
+        resultCount.setText(String.format("找到 %d 个结果", results.size()));
+    }
+
+    private int calculatePageForChapter(Chapter chapter) {
+        if (pages == null || pages.isEmpty()) return -1;
+
+        // 遍历所有页面，查找包含章节标题的页面
+        for (int i = 0; i < pages.size(); i++) {
+            if (pages.get(i).contains(chapter.getTitle())) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     @Override

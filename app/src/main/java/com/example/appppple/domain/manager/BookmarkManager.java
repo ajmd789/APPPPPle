@@ -12,26 +12,23 @@ import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 
 /**
- * 书签管理器
+ * 书签管理器：负责书签的增删查与持久化
  */
 public class BookmarkManager {
     private static final String TAG = "BookmarkManager";
-    private static final String PREFS_NAME = "bookmarks";
-    private static final String KEY_BOOKMARK_LIST = "bookmark_list";
+    private static final String PREFS_NAME = "bookmark_prefs";
+    private static final String KEY_BOOKMARKS = "bookmarks";
     private static BookmarkManager instance;
     private final SharedPreferences preferences;
     private final Gson gson;
 
     private BookmarkManager(Context context) {
         preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        gson = new GsonBuilder()
-                .registerTypeAdapter(Uri.class, new UriTypeAdapter())
-                .create();
+        gson = new GsonBuilder().create();
     }
 
     public static BookmarkManager getInstance(Context context) {
@@ -42,82 +39,66 @@ public class BookmarkManager {
     }
 
     /**
-     * 添加书签
+     * 获取当前书籍的所有书签
      */
-    public void addBookmark(String bookName, Uri bookUri, int pageNumber, String note) {
-        List<Bookmark> bookmarkList = getAllBookmarks();
-        
-        // 检查是否已存在相同页面的书签
-        for (Bookmark bookmark : bookmarkList) {
-            if (bookmark.getBookUri().equals(bookUri) && bookmark.getPageNumber() == pageNumber) {
-                Log.d(TAG, "该页面已存在书签");
-                return;
+    public List<Bookmark> getBookmarksForBook(Uri bookUri) {
+        List<Bookmark> all = getAllBookmarks();
+        List<Bookmark> result = new ArrayList<>();
+        for (Bookmark b : all) {
+            if (b.getBookUri() != null && b.getBookUri().equals(bookUri)) {
+                result.add(b);
             }
         }
+        return result;
+    }
 
-        // 创建新书签
-        Bookmark newBookmark = new Bookmark(bookName, bookUri, pageNumber, note);
-        bookmarkList.add(newBookmark);
+    /**
+     * 查询当前页是否有书签
+     */
+    public boolean isBookmarked(Uri bookUri, int page) {
+        List<Bookmark> all = getAllBookmarks();
+        for (Bookmark b : all) {
+            if (b.getBookUri() != null && b.getBookUri().equals(bookUri) && b.getPage() == page) {
+                return true;
+            }
+        }
+        return false;
+    }
 
-        // 保存到 SharedPreferences
-        String json = gson.toJson(bookmarkList);
-        preferences.edit().putString(KEY_BOOKMARK_LIST, json).apply();
-        
-        Log.d(TAG, String.format("添加书签 - 书名: %s, 页码: %d", bookName, pageNumber));
+    /**
+     * 添加或删除书签：若没有则添加，有则删除（切换效果）
+     */
+    public boolean toggleBookmark(String bookName, Uri bookUri, int page) {
+        List<Bookmark> all = getAllBookmarks();
+        Iterator<Bookmark> it = all.iterator();
+        boolean removed = false;
+        while (it.hasNext()) {
+            Bookmark b = it.next();
+            if (b.getBookUri() != null && b.getBookUri().equals(bookUri) && b.getPage() == page) {
+                it.remove();
+                removed = true;
+            }
+        }
+        if (!removed) {
+            all.add(new Bookmark(bookName, bookUri, page, System.currentTimeMillis()));
+        }
+        saveAllBookmarks(all);
+        Log.d(TAG, removed ? "删除书签" : "添加书签" + "，页码: " + page);
+        return !removed; // true=添加，false=删除
     }
 
     /**
      * 获取所有书签
      */
     public List<Bookmark> getAllBookmarks() {
-        String json = preferences.getString(KEY_BOOKMARK_LIST, "[]");
+        String json = preferences.getString(KEY_BOOKMARKS, "[]");
         Type type = new TypeToken<List<Bookmark>>(){}.getType();
-        List<Bookmark> bookmarkList = gson.fromJson(json, type);
-        return bookmarkList != null ? bookmarkList : new ArrayList<>();
+        List<Bookmark> list = gson.fromJson(json, type);
+        return list != null ? list : new ArrayList<>();
     }
 
-    /**
-     * 获取指定书籍的书签列表
-     */
-    public List<Bookmark> getBookmarksByUri(Uri bookUri) {
-        List<Bookmark> allBookmarks = getAllBookmarks();
-        List<Bookmark> bookBookmarks = new ArrayList<>();
-        
-        for (Bookmark bookmark : allBookmarks) {
-            if (bookmark.getBookUri().equals(bookUri)) {
-                bookBookmarks.add(bookmark);
-            }
-        }
-        
-        // 按页码排序
-        Collections.sort(bookBookmarks, Comparator.comparingInt(Bookmark::getPageNumber));
-        return bookBookmarks;
-    }
-
-    /**
-     * 删除书签
-     */
-    public void removeBookmark(Uri bookUri, int pageNumber) {
-        List<Bookmark> bookmarkList = getAllBookmarks();
-        bookmarkList.removeIf(bookmark -> 
-            bookmark.getBookUri().equals(bookUri) && bookmark.getPageNumber() == pageNumber);
-        
-        String json = gson.toJson(bookmarkList);
-        preferences.edit().putString(KEY_BOOKMARK_LIST, json).apply();
-        
-        Log.d(TAG, String.format("删除书签 - 页码: %d", pageNumber));
-    }
-
-    /**
-     * 检查指定页面是否有书签
-     */
-    public boolean hasBookmark(Uri bookUri, int pageNumber) {
-        List<Bookmark> bookmarkList = getAllBookmarks();
-        for (Bookmark bookmark : bookmarkList) {
-            if (bookmark.getBookUri().equals(bookUri) && bookmark.getPageNumber() == pageNumber) {
-                return true;
-            }
-        }
-        return false;
+    private void saveAllBookmarks(List<Bookmark> bookmarks) {
+        String json = gson.toJson(bookmarks);
+        preferences.edit().putString(KEY_BOOKMARKS, json).apply();
     }
 } 

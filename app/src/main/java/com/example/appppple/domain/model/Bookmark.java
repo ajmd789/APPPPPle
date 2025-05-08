@@ -3,21 +3,19 @@ package com.example.appppple.domain.model;
 import android.net.Uri;
 
 /**
- * 书签模型类
+ * 书签数据模型
  */
 public class Bookmark {
-    private final String bookName;
-    private final Uri bookUri;
-    private final int pageNumber;
-    private final String note;
-    private final long createTime;
+    private String bookName;
+    private Uri bookUri;
+    private int page;
+    private long timestamp;
 
-    public Bookmark(String bookName, Uri bookUri, int pageNumber, String note) {
+    public Bookmark(String bookName, Uri bookUri, int page, long timestamp) {
         this.bookName = bookName;
         this.bookUri = bookUri;
-        this.pageNumber = pageNumber;
-        this.note = note;
-        this.createTime = System.currentTimeMillis();
+        this.page = page;
+        this.timestamp = timestamp;
     }
 
     public String getBookName() {
@@ -28,29 +26,41 @@ public class Bookmark {
         return bookUri;
     }
 
-    public int getPageNumber() {
-        return pageNumber;
+    public int getPage() {
+        return page;
     }
 
-    public String getNote() {
-        return note;
+    public long getTimestamp() {
+        return timestamp;
     }
 
-    public long getCreateTime() {
-        return createTime;
+    public void setBookName(String bookName) {
+        this.bookName = bookName;
+    }
+
+    public void setBookUri(Uri bookUri) {
+        this.bookUri = bookUri;
+    }
+
+    public void setPage(int page) {
+        this.page = page;
+    }
+
+    public void setTimestamp(long timestamp) {
+        this.timestamp = timestamp;
     }
 
     @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        Bookmark bookmark = (Bookmark) o;
-        return pageNumber == bookmark.pageNumber &&
-                bookUri.equals(bookmark.bookUri);
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+        if (!(obj instanceof Bookmark)) return false;
+        Bookmark other = (Bookmark) obj;
+        // 以书籍和页码为唯一性
+        return bookUri != null && bookUri.equals(other.bookUri) && page == other.page;
     }
 
     @Override
     public int hashCode() {
-        return 31 * bookUri.hashCode() + pageNumber;
+        return (bookUri != null ? bookUri.hashCode() : 0) * 31 + page;
     }
 } 
