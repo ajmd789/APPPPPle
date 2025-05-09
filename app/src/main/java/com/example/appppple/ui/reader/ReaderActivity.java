@@ -340,7 +340,12 @@ public class ReaderActivity extends AppCompatActivity {
                         public void onLoadComplete() {
                             runOnUiThread(() -> {
                                 hideLoading();
-                                updatePageDisplay();
+                                // 在这里更新页面显示，确保内容已加载完成
+                                if (pages != null && !pages.isEmpty()) {
+                                    updatePageDisplay();
+                                    // 保存初始进度
+                                    saveReadingProgress();
+                                }
                             });
                         }
 
@@ -396,9 +401,24 @@ public class ReaderActivity extends AppCompatActivity {
 
                 totalPages = pages.size();
                 Log.d(TAG, "分页完成，总页数: " + totalPages);
+
+                // 检查是否有上次的阅读进度
+                ReadingProgressManager.ReadingProgress lastProgress = progressManager.getLastReadingProgress();
+                if (lastProgress != null && lastProgress.getBookUri().equals(currentBookUri)) {
+                    currentPage = lastProgress.getCurrentPage();
+                    Log.d(TAG, String.format("恢复阅读进度 - 书名: %s, 当前页: %d/%d",
+                            currentBookName, currentPage, totalPages));
+                }
                 
-                // 保存初始进度
-                saveReadingProgress();
+                // 在主线程中更新UI
+                runOnUiThread(() -> {
+                    hideLoading();
+                    if (pages != null && !pages.isEmpty()) {
+                        updatePageDisplay();
+                        // 保存初始进度
+                        saveReadingProgress();
+                    }
+                });
                 
             } catch (Exception e) {
                 Log.e(TAG, "加载书籍失败", e);
