@@ -132,75 +132,179 @@ public class ReaderActivity extends AppCompatActivity {
         loadingText = findViewById(R.id.loadingText);
         bookmarkHintOverlay = findViewById(R.id.bookmarkHintOverlay);
 
-        // 移除重复的点击监听器，只使用GestureDetector处理点击事件
-        contentTextView.setClickable(true);
-        contentTextView.setFocusable(true);
+        // 设置内容区域的触摸监听
+        contentTextView.setOnTouchListener((v, event) -> {
+            if (gestureDetector != null) {
+                gestureDetector.onTouchEvent(event);
+            }
+            return true;
+        });
 
-        findViewById(R.id.btnPrev).setOnClickListener(v -> {
+        // 上一页区域点击处理
+        View prevPageArea = findViewById(R.id.prevPageArea);
+        prevPageArea.setOnClickListener(v -> {
+            Log.d(TAG, "上一页区域被点击");
             if (currentPage > 0) {
+                Log.d(TAG, String.format("从第 %d 页翻到第 %d 页", currentPage + 1, currentPage));
                 currentPage--;
                 updatePageDisplay();
                 saveReadingProgress();
+            } else {
+                Log.d(TAG, "已经是第一页，无法继续向前翻页");
             }
         });
 
-        findViewById(R.id.btnNext).setOnClickListener(v -> {
+        // 下一页区域点击处理
+        View nextPageArea = findViewById(R.id.nextPageArea);
+        nextPageArea.setOnClickListener(v -> {
+            Log.d(TAG, "下一页区域被点击");
             if (currentPage < totalPages - 1) {
+                Log.d(TAG, String.format("从第 %d 页翻到第 %d 页", currentPage + 1, currentPage + 2));
                 currentPage++;
                 updatePageDisplay();
                 saveReadingProgress();
+            } else {
+                Log.d(TAG, "已经是最后一页，无法继续向后翻页");
             }
         });
 
-        findViewById(R.id.btnJump).setOnClickListener(v -> showJumpPageDialog());
+        // 上一页按钮点击处理
+        findViewById(R.id.btnPrev).setOnClickListener(v -> {
+            Log.d(TAG, "上一页按钮被点击");
+            if (currentPage > 0) {
+                Log.d(TAG, String.format("从第 %d 页翻到第 %d 页", currentPage + 1, currentPage));
+                currentPage--;
+                updatePageDisplay();
+                saveReadingProgress();
+            } else {
+                Log.d(TAG, "已经是第一页，无法继续向前翻页");
+            }
+        });
+
+        // 下一页按钮点击处理
+        findViewById(R.id.btnNext).setOnClickListener(v -> {
+            Log.d(TAG, "下一页按钮被点击");
+            if (currentPage < totalPages - 1) {
+                Log.d(TAG, String.format("从第 %d 页翻到第 %d 页", currentPage + 1, currentPage + 2));
+                currentPage++;
+                updatePageDisplay();
+                saveReadingProgress();
+            } else {
+                Log.d(TAG, "已经是最后一页，无法继续向后翻页");
+            }
+        });
+
+        findViewById(R.id.btnJump).setOnClickListener(v -> {
+            Log.d(TAG, "跳转按钮被点击");
+            showJumpPageDialog();
+        });
         
-        findViewById(R.id.btnBookmarks).setOnClickListener(v -> showBookmarkListDialog());
+        findViewById(R.id.btnBookmarks).setOnClickListener(v -> {
+            Log.d(TAG, "书签按钮被点击");
+            showBookmarkListDialog();
+        });
     }
 
     private void initGestureDetector() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            private static final int SWIPE_MIN_DISTANCE = 120;
+            private static final int SWIPE_THRESHOLD_VELOCITY = 200;
+
             @Override
             public boolean onDown(MotionEvent e) {
-                startY = e.getY();
+                Log.d(TAG, "onDown: 手势开始");
                 return true;
             }
 
             @Override
-            public boolean onScroll(MotionEvent e1, MotionEvent e2, float distanceX, float distanceY) {
-                if (e1 == null || e2 == null) return false;
+            public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
+                try {
+                    if (e1 == null || e2 == null) {
+                        Log.d(TAG, "onFling: 事件为空");
+                        return false;
+                    }
 
-                float deltaY = e2.getY() - startY;
-                if (deltaY > SWIPE_THRESHOLD && !isBookmarkHintVisible) {
-                    showBookmarkHint();
-                }
-                return true;
-            }
+                    float diffX = e2.getX() - e1.getX();
+                    float diffY = e2.getY() - e1.getY();
+                    
+                    Log.d(TAG, String.format("onFling: diffX=%.2f, diffY=%.2f, velocityX=%.2f, velocityY=%.2f",
+                            diffX, diffY, velocityX, velocityY));
 
-            @Override
-            public boolean onSingleTapUp(MotionEvent e) {
-                Log.d(TAG, "检测到单击事件");
-                // 检查点击是否在contentTextView的范围内
-                int[] location = new int[2];
-                contentTextView.getLocationOnScreen(location);
-                int left = location[0];
-                int top = location[1];
-                int right = left + contentTextView.getWidth();
-                int bottom = top + contentTextView.getHeight();
-
-                if (e.getRawX() >= left && e.getRawX() <= right &&
-                    e.getRawY() >= top && e.getRawY() <= bottom) {
-                    Log.d(TAG, "点击在contentTextView范围内，显示中央菜单");
-                    showCenterMenu();
-                    return true;
+                    // 确保水平滑动距离大于垂直滑动距离
+                    if (Math.abs(diffX) > Math.abs(diffY)) {
+                        // 确保滑动距离足够大
+                        if (Math.abs(diffX) > SWIPE_MIN_DISTANCE && Math.abs(velocityX) > SWIPE_THRESHOLD_VELOCITY) {
+                            if (diffX > 0) {
+                                // 向右滑动，显示上一页
+                                if (currentPage > 0) {
+                                    Log.d(TAG, "onFling: 向右滑动，显示上一页");
+                                    currentPage--;
+                                    updatePageDisplay();
+                                    saveReadingProgress();
+                                    return true;
+                                }
+                            } else {
+                                // 向左滑动，显示下一页
+                                if (currentPage < totalPages - 1) {
+                                    Log.d(TAG, "onFling: 向左滑动，显示下一页");
+                                    currentPage++;
+                                    updatePageDisplay();
+                                    saveReadingProgress();
+                                    return true;
+                                }
+                            }
+                        } else {
+                            Log.d(TAG, String.format("onFling: 滑动距离或速度不足 - 距离: %.2f, 速度: %.2f",
+                                    Math.abs(diffX), Math.abs(velocityX)));
+                        }
+                    } else {
+                        Log.d(TAG, "onFling: 垂直滑动距离大于水平滑动距离");
+                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "onFling: 手势检测异常", ex);
                 }
                 return false;
             }
-        });
 
-        // 设置contentTextView的触摸监听器
-        contentTextView.setOnTouchListener((v, event) -> {
-            Log.d(TAG, "contentTextView触摸事件: " + event.getAction());
-            return gestureDetector.onTouchEvent(event);
+            @Override
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                try {
+                    // 获取屏幕宽度
+                    int screenWidth = getResources().getDisplayMetrics().widthPixels;
+                    float x = e.getX();
+                    
+                    Log.d(TAG, String.format("onSingleTapConfirmed: x=%.2f, screenWidth=%d", x, screenWidth));
+                    
+                    // 如果点击在屏幕左侧1/3区域，显示上一页
+                    if (x < screenWidth / 3) {
+                        if (currentPage > 0) {
+                            Log.d(TAG, "onSingleTapConfirmed: 点击左侧区域，显示上一页");
+                            currentPage--;
+                            updatePageDisplay();
+                            saveReadingProgress();
+                            return true;
+                        }
+                    }
+                    // 如果点击在屏幕右侧1/3区域，显示下一页
+                    else if (x > screenWidth * 2 / 3) {
+                        if (currentPage < totalPages - 1) {
+                            Log.d(TAG, "onSingleTapConfirmed: 点击右侧区域，显示下一页");
+                            currentPage++;
+                            updatePageDisplay();
+                            saveReadingProgress();
+                            return true;
+                        }
+                    }
+                    // 如果点击在屏幕中间1/3区域，显示菜单
+                    else {
+                        Log.d(TAG, "onSingleTapConfirmed: 点击中间区域，显示菜单");
+                        showCenterMenu();
+                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "onSingleTapConfirmed: 点击事件处理异常", ex);
+                }
+                return true;
+            }
         });
     }
 
@@ -452,34 +556,20 @@ public class ReaderActivity extends AppCompatActivity {
     }
 
     private void showCenterMenu() {
-        Log.d(TAG, "显示中央菜单");
         Dialog dialog = new Dialog(this);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(R.layout.dialog_center_menu);
-
-        // 设置对话框宽度为屏幕宽度的80%
-        Window window = dialog.getWindow();
-        if (window != null) {
-            WindowManager.LayoutParams params = window.getAttributes();
-            params.width = (int) (getResources().getDisplayMetrics().widthPixels * 0.8);
-            window.setAttributes(params);
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-        }
-
-        // 设置目录按钮点击事件
+        
         dialog.findViewById(R.id.btnCatalog).setOnClickListener(v -> {
-            Log.d(TAG, "点击了目录按钮");
             dialog.dismiss();
             showCatalogDialog();
         });
-
-        // 设置搜索按钮点击事件
+        
         dialog.findViewById(R.id.btnSearch).setOnClickListener(v -> {
-            Log.d(TAG, "点击了搜索按钮");
             dialog.dismiss();
             showSearchDialog();
         });
-
+        
         dialog.show();
     }
 
