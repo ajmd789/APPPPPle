@@ -50,6 +50,12 @@ public class ConcurrentPaginatorTest {
                 assertTrue(pages.size() > 0);
                 latch.countDown();
             }
+
+            @Override
+            public void onAllBlocksReady(List<String> allPages) {
+                assertNotNull(allPages);
+                assertTrue(allPages.size() > 0);
+            }
         });
 
         // 开始分页
@@ -70,6 +76,12 @@ public class ConcurrentPaginatorTest {
                 assertNotNull(pages);
                 assertEquals(0, pages.size());
                 latch.countDown();
+            }
+
+            @Override
+            public void onAllBlocksReady(List<String> allPages) {
+                assertNotNull(allPages);
+                assertEquals(0, allPages.size());
             }
         });
 
@@ -93,6 +105,12 @@ public class ConcurrentPaginatorTest {
                 assertNotNull(pages);
                 assertTrue(pages.size() > 0);
                 latch.countDown();
+            }
+
+            @Override
+            public void onAllBlocksReady(List<String> allPages) {
+                assertNotNull(allPages);
+                assertTrue(allPages.size() > 0);
             }
         });
 
