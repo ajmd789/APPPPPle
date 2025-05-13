@@ -45,8 +45,9 @@ public class BookshelfActivity extends AppCompatActivity {
     }
 
     private void loadBooks() {
-        List<ReadingProgressManager.ReadingProgress> progressList = progressManager.getAllReadingProgress();
-        bookAdapter.updateBooks(progressList);
+        progressManager.getAllReadingProgress().observe(this, progressList -> {
+            bookAdapter.updateBooks(progressList);
+        });
     }
 
     private void onBookClick(ReadingProgressManager.ReadingProgress progress) {

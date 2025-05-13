@@ -32,7 +32,10 @@ public class BookAdapter extends RecyclerView.Adapter<BookAdapter.BookViewHolder
     }
 
     public void updateBooks(List<ReadingProgressManager.ReadingProgress> newBooks) {
-        this.books = newBooks;
+        this.books.clear();
+        if (newBooks != null) {
+            this.books.addAll(newBooks);
+        }
         notifyDataSetChanged();
     }
 

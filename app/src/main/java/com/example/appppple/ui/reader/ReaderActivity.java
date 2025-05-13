@@ -110,13 +110,14 @@ public class ReaderActivity extends AppCompatActivity {
         }
 
         // 检查是否有上次的阅读进度
-        ReadingProgressManager.ReadingProgress lastProgress = progressManager.getLastReadingProgress();
-        if (lastProgress != null && lastProgress.getBookUri().equals(currentBookUri)) {
-            currentPage = lastProgress.getCurrentPage();
-            totalPages = lastProgress.getTotalPages();
-            Log.d(TAG, String.format("恢复阅读进度 - 书名: %s, 当前页: %d/%d",
-                    currentBookName, currentPage, totalPages));
-        }
+        progressManager.getLastReadingProgress().observe(this, lastProgress -> {
+            if (lastProgress != null && lastProgress.getBookUri().equals(currentBookUri)) {
+                currentPage = lastProgress.getCurrentPage();
+                totalPages = lastProgress.getTotalPages();
+                Log.d(TAG, String.format("恢复阅读进度 - 书名: %s, 当前页: %d/%d",
+                        currentBookName, currentPage, totalPages));
+            }
+        });
 
         // 显示加载动画
         showLoading("正在加载书籍...");
@@ -403,12 +404,13 @@ public class ReaderActivity extends AppCompatActivity {
                 Log.d(TAG, "分页完成，总页数: " + totalPages);
 
                 // 检查是否有上次的阅读进度
-                ReadingProgressManager.ReadingProgress lastProgress = progressManager.getLastReadingProgress();
-                if (lastProgress != null && lastProgress.getBookUri().equals(currentBookUri)) {
-                    currentPage = lastProgress.getCurrentPage();
-                    Log.d(TAG, String.format("恢复阅读进度 - 书名: %s, 当前页: %d/%d",
-                            currentBookName, currentPage, totalPages));
-                }
+                progressManager.getLastReadingProgress().observe(this, lastProgress -> {
+                    if (lastProgress != null && lastProgress.getBookUri().equals(currentBookUri)) {
+                        currentPage = lastProgress.getCurrentPage();
+                        Log.d(TAG, String.format("恢复阅读进度 - 书名: %s, 当前页: %d/%d",
+                                currentBookName, currentPage, totalPages));
+                    }
+                });
                 
                 // 在主线程中更新UI
                 runOnUiThread(() -> {
@@ -453,16 +455,26 @@ public class ReaderActivity extends AppCompatActivity {
         setTitle(String.format("%s (%d/%d)", currentBook.getTitle(), currentPage + 1, totalPages));
 
         // 检查当前页是否有书签
-        if (currentBookUri != null && bookmarkManager.isBookmarked(currentBookUri, currentPage)) {
-            contentTextView.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.ic_bookmark, 0);
-        } else {
-            contentTextView.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
+        if (currentBookUri != null) {
+            bookmarkManager.isBookmarked(currentBookUri, currentPage).observe(this, isBookmarked -> {
+                if (isBookmarked) {
+                    contentTextView.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.ic_bookmark, 0);
+                } else {
+                    contentTextView.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
+                }
+            });
         }
     }
 
     private void saveReadingProgress() {
-        if (currentBookUri != null && currentBookName != null) {
-            progressManager.saveProgress(currentBookName, currentBookUri, currentPage, totalPages);
+        if (currentBook != null && currentBookUri != null) {
+            progressManager.saveProgress(currentBookName, currentBookUri, currentPage, totalPages)
+                .observe(this, success -> {
+                    if (success) {
+                        Log.d(TAG, String.format("保存阅读进度 - 书名: %s, 当前页: %d/%d",
+                                currentBookName, currentPage, totalPages));
+                    }
+                });
         }
     }
 
@@ -533,14 +545,14 @@ public class ReaderActivity extends AppCompatActivity {
     private void handleBookmarkAction() {
         if (currentBookUri == null || currentBookName == null) return;
 
-        boolean hasBookmark = bookmarkManager.isBookmarked(currentBookUri, currentPage);
-        if (hasBookmark) {
-            bookmarkManager.toggleBookmark(currentBookName, currentBookUri, currentPage);
-            Toast.makeText(this, "书签已删除", Toast.LENGTH_SHORT).show();
-        } else {
-            bookmarkManager.toggleBookmark(currentBookName, currentBookUri, currentPage);
-            Toast.makeText(this, "书签已添加", Toast.LENGTH_SHORT).show();
-        }
+        bookmarkManager.isBookmarked(currentBookUri, currentPage).observe(this, hasBookmark -> {
+            bookmarkManager.toggleBookmark(currentBookName, currentBookUri, currentPage)
+                .observe(this, success -> {
+                    if (success) {
+                        Toast.makeText(this, hasBookmark ? "书签已删除" : "书签已添加", Toast.LENGTH_SHORT).show();
+                    }
+                });
+        });
     }
 
     private void showBookmarkListDialog() {
@@ -553,25 +565,30 @@ public class ReaderActivity extends AppCompatActivity {
         RecyclerView recyclerView = bookmarkDialog.findViewById(R.id.bookmarkRecyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
-        List<Bookmark> bookmarks = bookmarkManager.getBookmarksForBook(currentBookUri);
-        bookmarkAdapter = new BookmarkAdapter(bookmarks, new BookmarkAdapter.OnBookmarkClickListener() {
-            @Override
-            public void onBookmarkClick(Bookmark bookmark) {
-                currentPage = bookmark.getPage();
-                updatePageDisplay();
-                saveReadingProgress();
-                bookmarkDialog.dismiss();
-            }
+        bookmarkManager.getBookmarksForBook(currentBookUri).observe(this, bookmarks -> {
+            bookmarkAdapter = new BookmarkAdapter(bookmarks, new BookmarkAdapter.OnBookmarkClickListener() {
+                @Override
+                public void onBookmarkClick(Bookmark bookmark) {
+                    currentPage = bookmark.getPage();
+                    updatePageDisplay();
+                    saveReadingProgress();
+                    bookmarkDialog.dismiss();
+                }
 
-            @Override
-            public void onDeleteClick(Bookmark bookmark) {
-                bookmarkManager.toggleBookmark(currentBookName, currentBookUri, bookmark.getPage());
-                bookmarkAdapter.updateBookmarks(bookmarkManager.getBookmarksForBook(currentBookUri));
-                Toast.makeText(ReaderActivity.this, "书签已删除", Toast.LENGTH_SHORT).show();
-            }
+                @Override
+                public void onDeleteClick(Bookmark bookmark) {
+                    bookmarkManager.toggleBookmark(currentBookName, currentBookUri, bookmark.getPage())
+                        .observe(ReaderActivity.this, success -> {
+                            if (success) {
+                                Toast.makeText(ReaderActivity.this, "书签已删除", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                }
+            });
+
+            recyclerView.setAdapter(bookmarkAdapter);
         });
 
-        recyclerView.setAdapter(bookmarkAdapter);
         bookmarkDialog.show();
     }
 
