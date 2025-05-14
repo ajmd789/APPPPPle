@@ -69,6 +69,8 @@ public class ReaderActivity extends AppCompatActivity {
     private boolean isBookmarkHintVisible = false;
     private BookmarkAdapter bookmarkAdapter;
     private Dialog bookmarkDialog;
+    private Book book;
+    private List<Bookmark> bookmarks;
 
     public static void start(Context context, Uri bookUri, String bookName) {
         Intent intent = new Intent(context, ReaderActivity.class);
@@ -318,122 +320,92 @@ public class ReaderActivity extends AppCompatActivity {
         loadingLayout.setVisibility(View.GONE);
     }
 
-    private void loadBookContentAsync(Uri bookUri, String bookName) {
+    private void loadBookContentAsync(Uri uri, String fileName) {
         executor.execute(() -> {
             try {
-                Log.d(TAG, "开始加载书籍: " + bookName);
-                BookParser parser = ParserFactory.createParser(this, bookUri);
+                BookParser parser = ParserFactory.createParser(this, uri);
+                if (parser == null) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "不支持的文件格式", Toast.LENGTH_SHORT).show();
+                        finish();
+                    });
+                    return;
+                }
+
                 Log.d(TAG, "创建解析器成功: " + parser.getClass().getSimpleName());
-
-                if (parser instanceof TxtParser) {
-                    ((TxtParser) parser).addChunkLoadListener(new TxtParser.ChunkLoadListener() {
-                        @Override
-                        public void onChunkLoaded(int loadedBytes, int totalBytes) {
-                            runOnUiThread(() -> {
-                                String progress = String.format("已加载: %.1fMB/%.1fMB",
-                                        loadedBytes / (1024.0 * 1024.0),
-                                        totalBytes / (1024.0 * 1024.0));
-                                loadingText.setText(progress);
-                            });
-                        }
-
-                        @Override
-                        public void onLoadComplete() {
-                            runOnUiThread(() -> {
-                                hideLoading();
-                                // 在这里更新页面显示，确保内容已加载完成
-                                if (pages != null && !pages.isEmpty()) {
-                                    updatePageDisplay();
-                                    // 保存初始进度
-                                    saveReadingProgress();
-                                }
-                            });
-                        }
-
-                        @Override
-                        public void onLoadError(Exception e) {
-                            runOnUiThread(() -> {
-                                hideLoading();
-                                Toast.makeText(ReaderActivity.this,
-                                        "加载失败: " + e.getMessage(),
-                                        Toast.LENGTH_SHORT).show();
-                                finish();
-                            });
-                        }
-                    });
-                }
-
-                currentBook = parser.parse(this, bookUri);
-                Log.d(TAG, "解析完成，书籍信息: " + (currentBook != null ? 
-                    "标题=" + currentBook.getTitle() + 
-                    ", 章节数=" + (currentBook.getChapters() != null ? currentBook.getChapters().size() : 0) : 
-                    "null"));
-                
-                if (currentBook == null) {
+                Book book = parser.parse(this, uri);
+                if (book == null) {
                     runOnUiThread(() -> {
-                        hideLoading();
-                        Toast.makeText(this, "解析书籍失败", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "解析文件失败", Toast.LENGTH_SHORT).show();
                         finish();
                     });
                     return;
                 }
 
-                if (currentBook.getChapters() == null || currentBook.getChapters().isEmpty()) {
-                    runOnUiThread(() -> {
-                        hideLoading();
-                        Toast.makeText(this, "书籍章节为空", Toast.LENGTH_SHORT).show();
-                        finish();
-                    });
-                    return;
-                }
+                Log.d(TAG, "解析完成，书籍信息: 标题=" + book.getTitle() + ", 章节数=" + book.getChapters().size());
+                book.setUri(uri);
+                book.setFileName(fileName);
 
                 // 分页处理
-                pages = new ArrayList<>();
-                for (Chapter chapter : currentBook.getChapters()) {
-                    String content = chapter.getContent();
-                    if (content != null && !content.isEmpty()) {
-                        // 按每页字符数分割内容
-                        for (int i = 0; i < content.length(); i += CHARS_PER_PAGE) {
-                            int end = Math.min(i + CHARS_PER_PAGE, content.length());
-                            pages.add(content.substring(i, end));
-                        }
+                runOnUiThread(() -> showLoading("正在分页..."));
+                this.book = book; // 先设置 book 对象
+                book.paginate(CHARS_PER_PAGE, new Book.PaginationListener() {
+                    @Override
+                    public void onPaginationProgress(int currentPage, int totalPages) {
+                        runOnUiThread(() -> {
+                            showLoading(String.format("正在分页... %d/%d", currentPage, totalPages));
+                        });
                     }
-                }
 
-                totalPages = pages.size();
-                Log.d(TAG, "分页完成，总页数: " + totalPages);
+                    @Override
+                    public void onPaginationComplete(List<String> pages) {
+                        runOnUiThread(() -> {
+                            hideLoading();
+                            if (pages != null && !pages.isEmpty()) {
+                                ReaderActivity.this.pages = pages;
+                                totalPages = pages.size();
+                                updatePageContent();
+                                setupBookmarkObserver();
+                            } else {
+                                Toast.makeText(ReaderActivity.this, "分页失败：内容为空", Toast.LENGTH_SHORT).show();
+                                finish();
+                            }
+                        });
+                    }
 
-                // 检查是否有上次的阅读进度
-                progressManager.getLastReadingProgress().observe(this, lastProgress -> {
-                    if (lastProgress != null && lastProgress.getBookUri().equals(currentBookUri)) {
-                        currentPage = lastProgress.getCurrentPage();
-                        Log.d(TAG, String.format("恢复阅读进度 - 书名: %s, 当前页: %d/%d",
-                                currentBookName, currentPage, totalPages));
+                    @Override
+                    public void onPaginationError(Exception e) {
+                        runOnUiThread(() -> {
+                            hideLoading();
+                            Toast.makeText(ReaderActivity.this, "分页失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            finish();
+                        });
                     }
                 });
-                
-                // 在主线程中更新UI
-                runOnUiThread(() -> {
-                    hideLoading();
-                    if (pages != null && !pages.isEmpty()) {
-                        updatePageDisplay();
-                        // 保存初始进度
-                        saveReadingProgress();
-                    }
-                });
-                
+
             } catch (Exception e) {
                 Log.e(TAG, "加载书籍失败", e);
                 runOnUiThread(() -> {
-                    hideLoading();
-                    Toast.makeText(this, "加载失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "加载书籍失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                     finish();
                 });
             }
         });
     }
-    
-    private void updatePageDisplay() {
+
+    private void setupBookmarkObserver() {
+        if (book != null) {
+            bookmarkManager.getBookmarksForBook(book.getUri())
+                .observe(this, bookmarks -> {
+                    if (bookmarks != null) {
+                        this.bookmarks = bookmarks;
+                        updateBookmarkButton();
+                    }
+                });
+        }
+    }
+
+    private void updatePageContent() {
         if (pages == null || pages.isEmpty()) {
             Log.e(TAG, "页面列表为空");
             Toast.makeText(this, "书籍内容为空", Toast.LENGTH_SHORT).show();
@@ -452,11 +424,11 @@ public class ReaderActivity extends AppCompatActivity {
             totalPages));
         
         // 更新标题显示当前页数
-        setTitle(String.format("%s (%d/%d)", currentBook.getTitle(), currentPage + 1, totalPages));
+        setTitle(String.format("%s (%d/%d)", book.getTitle(), currentPage + 1, totalPages));
 
         // 检查当前页是否有书签
-        if (currentBookUri != null) {
-            bookmarkManager.isBookmarked(currentBookUri, currentPage).observe(this, isBookmarked -> {
+        if (book.getUri() != null) {
+            bookmarkManager.isBookmarked(book.getUri(), currentPage).observe(this, isBookmarked -> {
                 if (isBookmarked) {
                     contentTextView.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.ic_bookmark, 0);
                 } else {
@@ -467,12 +439,12 @@ public class ReaderActivity extends AppCompatActivity {
     }
 
     private void saveReadingProgress() {
-        if (currentBook != null && currentBookUri != null) {
-            progressManager.saveProgress(currentBookName, currentBookUri, currentPage, totalPages)
+        if (book != null && book.getUri() != null) {
+            progressManager.saveProgress(book.getFileName(), book.getUri(), currentPage, totalPages)
                 .observe(this, success -> {
                     if (success) {
                         Log.d(TAG, String.format("保存阅读进度 - 书名: %s, 当前页: %d/%d",
-                                currentBookName, currentPage, totalPages));
+                                book.getFileName(), currentPage, totalPages));
                     }
                 });
         }
@@ -543,10 +515,10 @@ public class ReaderActivity extends AppCompatActivity {
     }
 
     private void handleBookmarkAction() {
-        if (currentBookUri == null || currentBookName == null) return;
+        if (book.getUri() == null || book.getFileName() == null) return;
 
-        bookmarkManager.isBookmarked(currentBookUri, currentPage).observe(this, hasBookmark -> {
-            bookmarkManager.toggleBookmark(currentBookName, currentBookUri, currentPage)
+        bookmarkManager.isBookmarked(book.getUri(), currentPage).observe(this, hasBookmark -> {
+            bookmarkManager.toggleBookmark(book.getFileName(), book.getUri(), currentPage)
                 .observe(this, success -> {
                     if (success) {
                         Toast.makeText(this, hasBookmark ? "书签已删除" : "书签已添加", Toast.LENGTH_SHORT).show();
@@ -556,7 +528,7 @@ public class ReaderActivity extends AppCompatActivity {
     }
 
     private void showBookmarkListDialog() {
-        if (currentBookUri == null) return;
+        if (book.getUri() == null) return;
 
         bookmarkDialog = new Dialog(this);
         bookmarkDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -565,7 +537,7 @@ public class ReaderActivity extends AppCompatActivity {
         RecyclerView recyclerView = bookmarkDialog.findViewById(R.id.bookmarkRecyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
-        bookmarkManager.getBookmarksForBook(currentBookUri).observe(this, bookmarks -> {
+        bookmarkManager.getBookmarksForBook(book.getUri()).observe(this, bookmarks -> {
             bookmarkAdapter = new BookmarkAdapter(bookmarks, new BookmarkAdapter.OnBookmarkClickListener() {
                 @Override
                 public void onBookmarkClick(Bookmark bookmark) {
@@ -577,7 +549,7 @@ public class ReaderActivity extends AppCompatActivity {
 
                 @Override
                 public void onDeleteClick(Bookmark bookmark) {
-                    bookmarkManager.toggleBookmark(currentBookName, currentBookUri, bookmark.getPage())
+                    bookmarkManager.toggleBookmark(book.getFileName(), book.getUri(), bookmark.getPage())
                         .observe(ReaderActivity.this, success -> {
                             if (success) {
                                 Toast.makeText(ReaderActivity.this, "书签已删除", Toast.LENGTH_SHORT).show();
@@ -611,7 +583,7 @@ public class ReaderActivity extends AppCompatActivity {
     }
 
     private void showCatalogDialog() {
-        if (currentBook == null || currentBook.getChapters() == null) {
+        if (book == null || book.getChapters() == null) {
             Toast.makeText(this, "目录信息不可用", Toast.LENGTH_SHORT).show();
             return;
         }
@@ -623,7 +595,7 @@ public class ReaderActivity extends AppCompatActivity {
         RecyclerView recyclerView = dialog.findViewById(R.id.catalogRecyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
-        CatalogAdapter adapter = new CatalogAdapter(currentBook.getChapters(), chapter -> {
+        CatalogAdapter adapter = new CatalogAdapter(book.getChapters(), chapter -> {
             // 计算章节对应的页码
             int targetPage = calculatePageForChapter(chapter);
             if (targetPage >= 0) {
@@ -719,6 +691,45 @@ public class ReaderActivity extends AppCompatActivity {
             }
         }
         return -1;
+    }
+
+    private void updatePageDisplay() {
+        if (pages == null || pages.isEmpty()) {
+            Log.e(TAG, "页面列表为空");
+            Toast.makeText(this, "书籍内容为空", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
+        if (currentPage < 0 || currentPage >= pages.size()) {
+            Log.e(TAG, "当前页码无效: " + currentPage);
+            currentPage = 0;
+        }
+
+        contentTextView.setText(pages.get(currentPage));
+        progressTextView.setText(String.format("%d/%d", 
+            currentPage + 1, 
+            totalPages));
+        
+        // 更新标题显示当前页数
+        setTitle(String.format("%s (%d/%d)", book.getTitle(), currentPage + 1, totalPages));
+
+        // 检查当前页是否有书签
+        if (book.getUri() != null) {
+            bookmarkManager.isBookmarked(book.getUri(), currentPage).observe(this, isBookmarked -> {
+                if (isBookmarked) {
+                    contentTextView.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.ic_bookmark, 0);
+                } else {
+                    contentTextView.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
+                }
+            });
+        }
+    }
+
+    private void updateBookmarkButton() {
+        if (bookmarks != null && !bookmarks.isEmpty()) {
+            bookmarkAdapter.updateBookmarks(bookmarks);
+        }
     }
 
     @Override
