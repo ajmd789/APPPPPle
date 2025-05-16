@@ -18,16 +18,17 @@ android {
 
     signingConfigs {
         release {
-            storeFile file("release.keystore")
-            storePassword "123456"
-            keyAlias "appppple"
-            keyPassword "123456"
+            storeFile file(System.getenv("KEYSTORE_FILE") ?: "release.keystore")
+            storePassword System.getenv("KEYSTORE_PASSWORD") ?: "123456"
+            keyAlias System.getenv("KEY_ALIAS") ?: "appppple"
+            keyPassword System.getenv("KEY_PASSWORD") ?: "123456"
         }
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
@@ -50,10 +51,12 @@ dependencies {
     implementation('nl.siegmann.epublib:epublib-core:3.1') {
         exclude group: 'org.slf4j'
         exclude group: 'xmlpull'
+        exclude group: 'net.sf.kxml'
     }
     implementation 'org.slf4j:slf4j-android:1.7.25'
     implementation 'com.googlecode.juniversalchardet:juniversalchardet:1.0.3'
     implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'net.sf.kxml:kxml2:2.3.0'
     
     // Room 依赖
     def room_version = "2.5.2"

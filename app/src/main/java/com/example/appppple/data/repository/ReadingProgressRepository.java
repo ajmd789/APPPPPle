@@ -58,6 +58,10 @@ public class ReadingProgressRepository {
         MutableLiveData<Boolean> result = new MutableLiveData<>();
         executorService.execute(() -> {
             try {
+                // 先删除旧的阅读进度
+                readingProgressDao.deleteProgress(bookUri.toString());
+
+                // 然后插入新的阅读进度
                 ReadingProgressEntity entity = new ReadingProgressEntity(
                     bookName,
                     bookUri,
