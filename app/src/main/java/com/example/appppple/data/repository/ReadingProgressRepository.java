@@ -37,22 +37,22 @@ public class ReadingProgressRepository {
     }
 
     public LiveData<ReadingProgress> getProgress(Uri bookUri) {
-        MutableLiveData<ReadingProgress> result = new MutableLiveData<>();
-        executorService.execute(() -> {
-            ReadingProgressEntity entity = readingProgressDao.getProgress(bookUri.toString());
-            if (entity != null) {
-                result.postValue(new ReadingProgress(
-                    entity.getBookName(),
-                    entity.getBookUri(),
-                    entity.getCurrentPage(),
-                    entity.getTotalPages()
-                ));
-            } else {
-                result.postValue(null);
-            }
-        });
-        return result;
-    }
+    MutableLiveData<ReadingProgress> result = new MutableLiveData<>();
+    executorService.execute(() -> {
+        ReadingProgressEntity entity = readingProgressDao.getProgress(bookUri.toString());
+        if (entity != null) {
+            result.postValue(new ReadingProgress(
+                entity.getBookName(),
+                entity.getBookUri(),
+                entity.getCurrentPage(),
+                entity.getTotalPages()
+            ));
+        } else {
+            result.postValue(null);
+        }
+    });
+    return result;
+}
 
     public LiveData<Boolean> saveProgress(String bookName, Uri bookUri, int currentPage, int totalPages) {
         MutableLiveData<Boolean> result = new MutableLiveData<>();

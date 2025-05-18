@@ -1,6 +1,10 @@
 // ui/reader/ReaderActivity.java
 package com.example.appppple.ui.reader;
 
+import okhttp3.FormBody;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import android.os.Handler;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -27,6 +31,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import androidx.lifecycle.LiveData;
+import androidx.lifecycle.MutableLiveData;
+
 import com.example.appppple.R;
 import com.example.appppple.domain.manager.BookmarkManager;
 import com.example.appppple.domain.manager.ReadingProgressManager;
@@ -44,6 +51,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class ReaderActivity extends AppCompatActivity {
+    private static final int AUTO_SAVE_INTERVAL = 60 * 1000; // 1分钟
+
+    private int lastSavedPage = -1;
     private static final String TAG = "ReaderActivity";
     private static final String EXTRA_BOOK_URI = "book_uri";
     private static final String EXTRA_BOOK_NAME = "book_name";
@@ -71,6 +81,18 @@ public class ReaderActivity extends AppCompatActivity {
     private Dialog bookmarkDialog;
     private Book book;
     private List<Bookmark> bookmarks;
+
+    private Handler autoSaveHandler = new Handler();
+    private Runnable autoSaveRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (currentPage != lastSavedPage) { // 只有页码变化才保存
+                saveReadingProgress();
+                lastSavedPage = currentPage;
+            }
+            autoSaveHandler.postDelayed(this, AUTO_SAVE_INTERVAL);
+        }
+    };
 
     public static void start(Context context, Uri bookUri, String bookName) {
         Intent intent = new Intent(context, ReaderActivity.class);
@@ -111,23 +133,19 @@ public class ReaderActivity extends AppCompatActivity {
             return;
         }
 
-        // 检查是否有上次的阅读进度
-        progressManager.getLastReadingProgress().observe(this, lastProgress -> {
-            if (lastProgress != null && lastProgress.getBookUri().equals(currentBookUri)) {
-                currentPage = lastProgress.getCurrentPage();
-                totalPages = lastProgress.getTotalPages();
-                Log.d(TAG, String.format("恢复阅读进度 - 书名: %s, 当前页: %d/%d",
-                        currentBookName, currentPage, totalPages));
-            }
-        });
+      
 
         // 显示加载动画
         showLoading("正在加载书籍...");
 
         // 异步加载书籍内容
         loadBookContentAsync(currentBookUri, currentBookName);
+        autoSaveHandler.postDelayed(autoSaveRunnable, AUTO_SAVE_INTERVAL);
     }
-    
+
+
+
+
     private void initViews() {
         contentTextView = findViewById(R.id.contentTextView);
         progressTextView = findViewById(R.id.txtProgress);
@@ -151,7 +169,6 @@ public class ReaderActivity extends AppCompatActivity {
                 Log.d(TAG, String.format("从第 %d 页翻到第 %d 页", currentPage + 1, currentPage));
                 currentPage--;
                 updatePageDisplay();
-                saveReadingProgress();
             } else {
                 Log.d(TAG, "已经是第一页，无法继续向前翻页");
             }
@@ -165,7 +182,6 @@ public class ReaderActivity extends AppCompatActivity {
                 Log.d(TAG, String.format("从第 %d 页翻到第 %d 页", currentPage + 1, currentPage + 2));
                 currentPage++;
                 updatePageDisplay();
-                saveReadingProgress();
             } else {
                 Log.d(TAG, "已经是最后一页，无法继续向后翻页");
             }
@@ -364,7 +380,19 @@ public class ReaderActivity extends AppCompatActivity {
                             if (pages != null && !pages.isEmpty()) {
                                 ReaderActivity.this.pages = pages;
                                 totalPages = pages.size();
-                                updatePageContent();
+                                
+                                // 新增：加载保存的阅读进度
+                                progressManager.getProgress(book.getUri()).observe(ReaderActivity.this, progress -> {
+                                    if (progress != null) {
+                                        currentPage = progress.getCurrentPage();
+                                        Log.d(TAG, "加载保存的进度: 页码=" + currentPage);
+                                    } else {
+                                        currentPage = 0;
+                                    }
+                                    updatePageDisplay();
+                                });
+                                // 新增结束
+                                
                                 setupBookmarkObserver();
                             } else {
                                 Toast.makeText(ReaderActivity.this, "分页失败：内容为空", Toast.LENGTH_SHORT).show();
@@ -739,5 +767,37 @@ public class ReaderActivity extends AppCompatActivity {
         if (bookmarkDialog != null && bookmarkDialog.isShowing()) {
             bookmarkDialog.dismiss();
         }
+        autoSaveHandler.removeCallbacks(autoSaveRunnable);
+        
+        // 添加保存逻辑
+        if (currentPage != lastSavedPage) {
+            saveReadingProgress();
+        }
+        
+        sendExitRecord();
+    }
+    // 新增退出记录方法
+    private void sendExitRecord() {
+        if (book == null) return;
+        
+        new Thread(() -> {
+            try {
+                OkHttpClient client = new OkHttpClient();
+                FormBody.Builder formBuilder = new FormBody.Builder()
+                    .add("bookName", book.getFileName())
+                    .add("currentPage", String.valueOf(currentPage + 1))
+                    .add("totalPages", String.valueOf(totalPages))
+                    .add("timestamp", String.valueOf(System.currentTimeMillis()));
+
+                Request request = new Request.Builder()
+                    .url("http://43.143.236.218:8088/addReadRecord")
+                    .post(formBuilder.build())
+                    .build();
+
+                client.newCall(request).execute(); // 不需要处理响应
+            } catch (Exception e) {
+                Log.e(TAG, "发送阅读记录失败", e);
+            }
+        }).start();
     }
 }

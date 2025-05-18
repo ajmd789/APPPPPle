@@ -22,6 +22,10 @@ public class ReadingProgressManager {
         repository = ReadingProgressRepository.getInstance(context);
     }
 
+    public LiveData<ReadingProgress> getProgress(Uri bookUri) {
+        return repository.getProgress(bookUri);
+    }
+
     public static ReadingProgressManager getInstance(Context context) {
         if (instance == null) {
             instance = new ReadingProgressManager(context.getApplicationContext());
