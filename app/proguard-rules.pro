@@ -107,3 +107,17 @@
 # 保留 R8 完全模式
 -keepattributes LineNumberTable,SourceFile
 -renamesourcefileattribute SourceFile
+
+# 保留所有安全提供者相关类
+-keep class org.bouncycastle.** { *; }
+-keep class org.conscrypt.** { *; }
+-keep class org.openjsse.** { *; }
+
+# 保留 OkHttp 平台适配层
+-keep class okhttp3.internal.platform.AndroidPlatform { *; }
+-keep class okhttp3.internal.platform.BouncyCastlePlatform { *; }
+-keep class okhttp3.internal.platform.ConscryptPlatform { *; }
+-keep class okhttp3.internal.platform.OpenJSSEPlatform { *; }
+
+# 保留 javax.net.ssl 相关类（关键！）
+-keep class javax.net.ssl.** { *; }

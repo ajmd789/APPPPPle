@@ -22,10 +22,14 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // 启动文件选择器
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*"); // 允许选择所有类型的文件
+        // 设置允许选择的文件类型
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+            "application/epub+zip",  // EPUB 类型
+            "text/plain"             // TXT 类型
+        });
         startActivityForResult(intent, PICK_BOOK_REQUEST);
     }
 

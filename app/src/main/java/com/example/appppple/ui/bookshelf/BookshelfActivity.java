@@ -56,9 +56,14 @@ public class BookshelfActivity extends AppCompatActivity {
 
     private void pickBook() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
-        startActivityForResult(intent, PICK_BOOK_REQUEST);
+    intent.addCategory(Intent.CATEGORY_OPENABLE);
+    // 设置允许选择的文件类型
+    intent.setType("*/*");
+    intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+        "application/epub+zip",  // EPUB 类型
+        "text/plain"             // TXT 类型
+    });
+    startActivityForResult(intent, PICK_BOOK_REQUEST);
     }
 
     @Override

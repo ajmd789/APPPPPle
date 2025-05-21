@@ -45,6 +45,13 @@ android {
 }
 
 dependencies {
+    // 添加 TLS 安全库
+    implementation 'org.bouncycastle:bcpkix-jdk18on:1.77'  // Bouncy Castle 最新稳定版
+    implementation 'org.conscrypt:conscrypt-android:2.5.2'  // Google 官方推荐版本
+    implementation 'org.openjsse:openjsse:1.1.0'            // OpenJSSE 核心库
+
+    // 确保 OkHttp 版本兼容（至少 4.9.0+）
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.squareup.okhttp3:okhttp:4.9.3'
     implementation libs.appcompat
     implementation libs.material
