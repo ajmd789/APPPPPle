@@ -14,6 +14,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -23,7 +24,10 @@ import com.example.appppple.ui.reader.ReaderActivity;
 import com.example.appppple.util.BookFileScanner;
 import com.example.appppple.util.ScanPermissionHelper;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
-
+import android.provider.MediaStore;
+import android.database.Cursor;
+import android.content.ContentResolver;
+import android.content.ContentUris;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,7 +50,7 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_bookshelf);
-
+        fileScanner = new BookFileScanner(getContentResolver());
         // 初始化组件
         progressManager = ReadingProgressManager.getInstance(this);
         permissionHelper = new ScanPermissionHelper(this, this);
@@ -57,15 +61,17 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
         loadBooks();
     }
 
-    private void setupButtonClickListeners() {
-        // 手动加书按钮 - 对应原菜单的"手动添加"
-        findViewById(R.id.buttonAddBook).setOnClickListener(v -> pickBook());
 
-        // 全盘搜书按钮 - 对应原菜单的"自动扫描"
-        findViewById(R.id.buttonSearchBook).setOnClickListener(v ->
-                permissionHelper.checkStoragePermission()
-        );
+    private void setupButtonClickListeners() {
+        findViewById(R.id.buttonSearchBook).setOnClickListener(v -> {
+            // 更新为使用 MediaStore API 无需权限检查
+            startFileScan();
+        });
+
+        // 手动加书按钮保持不变
+        findViewById(R.id.buttonAddBook).setOnClickListener(v -> pickBook());
     }
+
 
     private void initViews() {
         booksRecyclerView = findViewById(R.id.booksRecyclerView);
@@ -96,6 +102,33 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
         );
     }
     // endregion
+
+    public List<Uri> scanForBooks() {
+        List<Uri> results = new ArrayList<>();
+
+        // 使用完整包路径引用
+        String[] projection = {MediaStore.Files.FileColumns._ID};
+        String selection = MediaStore.Files.FileColumns.MIME_TYPE + " IN (?, ?)";
+        String[] selectionArgs = {"application/epub+zip", "text/plain"};
+
+        // 使用 Activity 的 ContentResolver
+        ContentResolver resolver = getContentResolver();
+        try (Cursor cursor = resolver.query(
+                MediaStore.Files.getContentUri("external"),
+                projection,
+                selection,
+                selectionArgs,
+                null)) {
+            while (cursor != null && cursor.moveToNext()) {
+                long id = cursor.getLong(0);
+                results.add(ContentUris.withAppendedId(
+                        MediaStore.Files.getContentUri("external"), id));
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Scan error", e);
+        }
+        return results;
+    }
 
     // region File Scanning
     private void startFileScan() {
