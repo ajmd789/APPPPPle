@@ -47,14 +47,24 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_bookshelf);
 
-        // Initialize components
+        // 初始化组件
         progressManager = ReadingProgressManager.getInstance(this);
         permissionHelper = new ScanPermissionHelper(this, this);
         fileScanner = new BookFileScanner(getContentResolver());
 
         initViews();
-        setupMenu();
+        setupButtonClickListeners(); // 替换原来的setupMenu()
         loadBooks();
+    }
+
+    private void setupButtonClickListeners() {
+        // 手动加书按钮 - 对应原菜单的"手动添加"
+        findViewById(R.id.buttonAddBook).setOnClickListener(v -> pickBook());
+
+        // 全盘搜书按钮 - 对应原菜单的"自动扫描"
+        findViewById(R.id.buttonSearchBook).setOnClickListener(v ->
+                permissionHelper.checkStoragePermission()
+        );
     }
 
     private void initViews() {
@@ -64,24 +74,7 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
         booksRecyclerView.setAdapter(bookAdapter);
     }
 
-    private void setupMenu() {
-        ImageButton addBookBtn = findViewById(R.id.addBookFab);
-        addMenu = new PopupMenu(this, addBookBtn);
-        addMenu.getMenuInflater().inflate(R.menu.bookshelf_add_menu, addMenu.getMenu());
-        
-        addBookBtn.setOnClickListener(v -> addMenu.show());
-        
-        addMenu.setOnMenuItemClickListener(item -> {
-            if (item.getItemId() == R.id.action_add_manual) {
-                pickBook();
-                return true;
-            } else if (item.getItemId() == R.id.action_auto_scan) {
-                permissionHelper.checkStoragePermission();
-                return true;
-            }
-            return false;
-        });
-    }
+
 
     // region Permission Callbacks
     @Override
