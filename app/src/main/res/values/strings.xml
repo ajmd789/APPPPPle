@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">APPPPPle</string>
+    <string name="add_manual">手动添加</string>
+    <string name="auto_scan">自动扫描</string>
+    <string name="scanning">扫描中…找到%1$d个书籍</string>
+    <string name="permission_required">需要存储权限来扫描书籍</string>
 </resources>
