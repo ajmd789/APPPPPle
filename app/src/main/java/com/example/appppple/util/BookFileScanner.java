@@ -1,4 +1,3 @@
-// File: BookFileScanner.java
 package com.example.appppple.util;
 
 import android.content.ContentResolver;
@@ -30,7 +29,6 @@ public class BookFileScanner {
                 List<Uri> result = scanForBooks();
                 callback.onScanComplete(result);
             } catch (Exception e) {
-                Log.e(TAG, "Scan failed", e);
                 callback.onScanError(e);
             }
         }).start();
@@ -38,25 +36,28 @@ public class BookFileScanner {
 
     private List<Uri> scanForBooks() {
         List<Uri> results = new ArrayList<>();
+        Log.d(TAG, "开始扫描电子书文件...");
+
         String[] projection = {MediaStore.Files.FileColumns._ID};
         String selection = MediaStore.Files.FileColumns.MIME_TYPE + " IN (?, ?)";
         String[] selectionArgs = {"application/epub+zip", "text/plain"};
 
         try (Cursor cursor = mResolver.query(
-                MediaStore.Files.getContentUri("external"),
+                MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL),
                 projection,
                 selection,
                 selectionArgs,
                 null)) {
-
-            if (cursor != null) {
-                while (cursor.moveToNext()) {
-                    long id = cursor.getLong(0);
-                    Uri uri = ContentUris.withAppendedId(
-                            MediaStore.Files.getContentUri("external"), id);
-                    results.add(uri);
-                }
+            while (cursor != null && cursor.moveToNext()) {
+                long id = cursor.getLong(0);
+                Uri uri = ContentUris.withAppendedId(
+                        MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL), id);
+                Log.d(TAG, "找到电子书文件: " + uri);
+                results.add(uri);
             }
+            Log.d(TAG, "扫描完成，共找到 " + results.size() + " 个文件");
+        } catch (Exception e) {
+            Log.e(TAG, "扫描错误: " + e.getMessage());
         }
         return results;
     }

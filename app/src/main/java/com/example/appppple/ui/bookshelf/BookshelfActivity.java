@@ -2,14 +2,15 @@ package com.example.appppple.ui.bookshelf;
 
 import android.Manifest;
 import android.app.ProgressDialog;
+import android.content.ContentResolver;
+import android.content.ContentUris;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.util.Log;
-import android.view.View;
-import android.widget.ImageButton;
-import android.widget.PopupMenu;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -23,11 +24,7 @@ import com.example.appppple.domain.manager.ReadingProgressManager;
 import com.example.appppple.ui.reader.ReaderActivity;
 import com.example.appppple.util.BookFileScanner;
 import com.example.appppple.util.ScanPermissionHelper;
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import android.provider.MediaStore;
-import android.database.Cursor;
-import android.content.ContentResolver;
-import android.content.ContentUris;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,7 +35,6 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
     // UI Components
     private RecyclerView booksRecyclerView;
     private BookAdapter bookAdapter;
-    private PopupMenu addMenu;
     private ProgressDialog scanProgress;
     
     // Managers & Helpers
@@ -50,28 +46,21 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_bookshelf);
-        fileScanner = new BookFileScanner(getContentResolver());
+
         // 初始化组件
         progressManager = ReadingProgressManager.getInstance(this);
         permissionHelper = new ScanPermissionHelper(this, this);
         fileScanner = new BookFileScanner(getContentResolver());
 
         initViews();
-        setupButtonClickListeners(); // 替换原来的setupMenu()
+        setupButtonClickListeners();
         loadBooks();
     }
 
-
     private void setupButtonClickListeners() {
-        findViewById(R.id.buttonSearchBook).setOnClickListener(v -> {
-            // 更新为使用 MediaStore API 无需权限检查
-            startFileScan();
-        });
-
-        // 手动加书按钮保持不变
+        findViewById(R.id.buttonSearchBook).setOnClickListener(v -> startFileScan());
         findViewById(R.id.buttonAddBook).setOnClickListener(v -> pickBook());
     }
-
 
     private void initViews() {
         booksRecyclerView = findViewById(R.id.booksRecyclerView);
@@ -80,9 +69,7 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
         booksRecyclerView.setAdapter(bookAdapter);
     }
 
-
-
-    // region Permission Callbacks
+    // region 权限回调
     @Override
     public void onPermissionGranted() {
         startFileScan();
@@ -103,34 +90,7 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
     }
     // endregion
 
-    public List<Uri> scanForBooks() {
-        List<Uri> results = new ArrayList<>();
-
-        // 使用完整包路径引用
-        String[] projection = {MediaStore.Files.FileColumns._ID};
-        String selection = MediaStore.Files.FileColumns.MIME_TYPE + " IN (?, ?)";
-        String[] selectionArgs = {"application/epub+zip", "text/plain"};
-
-        // 使用 Activity 的 ContentResolver
-        ContentResolver resolver = getContentResolver();
-        try (Cursor cursor = resolver.query(
-                MediaStore.Files.getContentUri("external"),
-                projection,
-                selection,
-                selectionArgs,
-                null)) {
-            while (cursor != null && cursor.moveToNext()) {
-                long id = cursor.getLong(0);
-                results.add(ContentUris.withAppendedId(
-                        MediaStore.Files.getContentUri("external"), id));
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Scan error", e);
-        }
-        return results;
-    }
-
-    // region File Scanning
+    // region 文件扫描
     private void startFileScan() {
         showProgressDialog("正在扫描书籍...");
         
@@ -144,7 +104,7 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
                         return;
                     }
                     addBooksToShelf(bookUris);
-                    loadBooks(); // Refresh the list
+                    loadBooks();
                 });
             }
 
@@ -160,16 +120,21 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
     }
 
     private void addBooksToShelf(List<Uri> bookUris) {
-        // TODO: Implement bulk save logic
-        Log.d(TAG, "Found books: " + bookUris.size());
+        Log.d("FileScan", "===== 开始添加书籍到书架 =====");
         for (Uri uri : bookUris) {
             String fileName = getFileNameFromUri(uri);
-            progressManager.saveProgress(fileName, uri, 0, 0); // 示例保存逻辑
+            Log.d("FileScan", String.format(
+                "添加书籍 [文件名: %s]\n        [URI: %s]",
+                fileName, 
+                uri.toString()
+            ));
+            progressManager.saveProgress(fileName, uri, 0, 0);
         }
+        Log.d("FileScan", "===== 添加完成 =====");
     }
     // endregion
 
-    // region Helper Methods
+    // region 辅助方法
     private void showProgressDialog(String message) {
         runOnUiThread(() -> {
             scanProgress = new ProgressDialog(this);
@@ -194,7 +159,7 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
     }
 
     private String getFileNameFromUri(Uri uri) {
-        try (android.database.Cursor cursor = getContentResolver().query(
+        try (Cursor cursor = getContentResolver().query(
                 uri, null, null, null, null)) {
             if (cursor != null && cursor.moveToFirst()) {
                 int nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
@@ -209,7 +174,7 @@ public class BookshelfActivity extends AppCompatActivity implements ScanPermissi
     }
     // endregion
 
-    // region Existing Methods
+    // region 核心功能
     private void loadBooks() {
         progressManager.getAllReadingProgress().observe(this, progressList -> 
             bookAdapter.updateBooks(progressList)
